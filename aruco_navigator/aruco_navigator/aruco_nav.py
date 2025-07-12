@@ -20,17 +20,19 @@ class ArucoNavigator(Node):
 
         self.move_forward = True
         self.processing = False
+        self.count = 0
+        self.max_tags = 5
 
-        self.get_logger().info("Aruco Navigator started in fast mode (no tag limit).")
- 
+        self.get_logger().info("Aruco Navigator ready and running!")
+
     def keep_moving_forward(self):
-        if self.move_forward and not self.processing:
+        if self.move_forward and not self.processing and self.count < self.max_tags:
             twist = Twist()
-            twist.linear.x = 0.25  
+            twist.linear.x = 0.08  
             self.cmd_pub.publish(twist)
 
     def image_callback(self, msg):
-        if self.processing:
+        if self.processing or self.count >= self.max_tags:
             return
 
         try:
@@ -45,41 +47,45 @@ class ArucoNavigator(Node):
 
             if ids is not None:
                 for tag_id in ids.flatten():
-                    if tag_id in [0, 1]:
+                    if tag_id in [0, 1] and not self.processing:
                         self.move_forward = False
                         self.processing = True
-                        self.get_logger().info(f"[INFO] Tag {tag_id} detected")
+                        self.get_logger().info(f"[INFO] Detected tag ID: {tag_id}")
                         self.handle_tag(tag_id)
+                        self.count += 1
                         self.processing = False
                         self.move_forward = True
-                        time.sleep(0.5)  
+                        time.sleep(1.0)
         except Exception as e:
             self.get_logger().error(f"Image callback error: {e}")
 
     def handle_tag(self, tag_id):
         twist = Twist()
-        turn_speed = 0.6        
-        forward_speed = 0.35    
-        forward_distance = 0.3
-        turn_time = 1.57 / turn_speed 
+        turn_speed = 0.5         
+        forward_speed = 0.25     
+        forward_distance = 0.3  
+        turn_time = 3.1         
 
+        # Turn
         twist.angular.z = -turn_speed if tag_id == 0 else turn_speed
-        self.get_logger().info("[ACTION] Rotating 90°")
+        self.get_logger().info("[ACTION] Turning...")
         start = time.time()
         while time.time() - start < turn_time:
             self.cmd_pub.publish(twist)
 
+        # Move forward
         twist.angular.z = 0.0
         twist.linear.x = forward_speed
-        forward_time = forward_distance / forward_speed  
+        forward_time = forward_distance / forward_speed 
 
-        self.get_logger().info("[ACTION] Advancing forward")
+        self.get_logger().info("[ACTION] Moving forward...")
         start = time.time()
         while time.time() - start < forward_time:
             self.cmd_pub.publish(twist)
 
+        # Stop
         self.cmd_pub.publish(Twist())
-        self.get_logger().info("[ACTION] Done\n")
+        self.get_logger().info("[ACTION] Completed 90° turn + forward.\n")
 
 def main(args=None):
     rclpy.init(args=args)
